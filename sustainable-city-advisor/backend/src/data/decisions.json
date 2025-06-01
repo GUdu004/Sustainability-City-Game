@@ -1,0 +1,228 @@
+{
+  "decisions": [
+    {
+      "question": "Build a new community park in the downtown area?",
+      "choices": [
+        {
+          "text": "Yes, build the park with playground and green spaces.",
+          "impact": {
+            "environment": 15,
+            "economy": -8,
+            "happiness": 20
+          }
+        },
+        {
+          "text": "No, use the land for commercial development instead.",
+          "impact": {
+            "environment": -5,
+            "economy": 12,
+            "happiness": -3
+          }
+        }
+      ]
+    },
+    {
+      "question": "A manufacturing company wants to build a new factory in your city?",
+      "choices": [
+        {
+          "text": "Welcome the factory with tax incentives.",
+          "impact": {
+            "environment": -20,
+            "economy": 25,
+            "happiness": -8
+          }
+        },
+        {
+          "text": "Require strict environmental standards before approval.",
+          "impact": {
+            "environment": -5,
+            "economy": 15,
+            "happiness": 5
+          }
+        },
+        {
+          "text": "Reject the factory to protect the environment.",
+          "impact": {
+            "environment": 10,
+            "economy": -15,
+            "happiness": 8
+          }
+        }
+      ]
+    },
+    {
+      "question": "Implement a comprehensive recycling program citywide?",
+      "choices": [
+        {
+          "text": "Yes, start the program with recycling centers.",
+          "impact": {
+            "environment": 18,
+            "economy": -10,
+            "happiness": 12
+          }
+        },
+        {
+          "text": "Start a smaller pilot program first.",
+          "impact": {
+            "environment": 8,
+            "economy": -3,
+            "happiness": 5
+          }
+        },
+        {
+          "text": "Focus budget on other priorities.",
+          "impact": {
+            "environment": -8,
+            "economy": 8,
+            "happiness": -2
+          }
+        }
+      ]
+    },
+    {
+      "question": "Expand public transportation with new bus routes and train lines?",
+      "choices": [
+        {
+          "text": "Yes, invest heavily in public transport infrastructure.",
+          "impact": {
+            "environment": 15,
+            "economy": -15,
+            "happiness": 18
+          }
+        },
+        {
+          "text": "Add limited bus routes only.",
+          "impact": {
+            "environment": 8,
+            "economy": -5,
+            "happiness": 8
+          }
+        },
+        {
+          "text": "Maintain current transportation options.",
+          "impact": {
+            "environment": -3,
+            "economy": 5,
+            "happiness": -8
+          }
+        }
+      ]
+    },
+    {
+      "question": "Install solar panels on public buildings and create solar farms?",
+      "choices": [
+        {
+          "text": "Yes, commit to renewable energy transition.",
+          "impact": {
+            "environment": 22,
+            "economy": -12,
+            "happiness": 15
+          }
+        },
+        {
+          "text": "Install solar panels on some key buildings only.",
+          "impact": {
+            "environment": 10,
+            "economy": -5,
+            "happiness": 8
+          }
+        },
+        {
+          "text": "Continue with traditional energy sources.",
+          "impact": {
+            "environment": -10,
+            "economy": 8,
+            "happiness": -5
+          }
+        }
+      ]
+    },
+    {
+      "question": "Build affordable housing to address the housing shortage?",
+      "choices": [
+        {
+          "text": "Yes, build large affordable housing complexes.",
+          "impact": {
+            "environment": -5,
+            "economy": -10,
+            "happiness": 25
+          }
+        },
+        {
+          "text": "Build mixed-income housing developments.",
+          "impact": {
+            "environment": 2,
+            "economy": 5,
+            "happiness": 15
+          }
+        },
+        {
+          "text": "Encourage private developers to address housing.",
+          "impact": {
+            "environment": -8,
+            "economy": 15,
+            "happiness": -5
+          }
+        }
+      ]
+    },
+    {
+      "question": "Construct a new hospital to improve healthcare access?",
+      "choices": [
+        {
+          "text": "Yes, build a state-of-the-art hospital.",
+          "impact": {
+            "environment": -3,
+            "economy": -18,
+            "happiness": 25
+          }
+        },
+        {
+          "text": "Build a smaller community health clinic.",
+          "impact": {
+            "environment": -1,
+            "economy": -8,
+            "happiness": 12
+          }
+        },
+        {
+          "text": "Improve existing healthcare facilities instead.",
+          "impact": {
+            "environment": 0,
+            "economy": -5,
+            "happiness": 8
+          }
+        }
+      ]
+    },
+    {
+      "question": "Invest in new schools and education infrastructure?",
+      "choices": [
+        {
+          "text": "Yes, build new schools with modern facilities.",
+          "impact": {
+            "environment": 3,
+            "economy": -15,
+            "happiness": 22
+          }
+        },
+        {
+          "text": "Renovate existing schools with technology upgrades.",
+          "impact": {
+            "environment": 1,
+            "economy": -8,
+            "happiness": 15
+          }
+        },
+        {
+          "text": "Maintain current education funding levels.",
+          "impact": {
+            "environment": 0,
+            "economy": 5,
+            "happiness": -8
+          }
+        }
+      ]
+    }
+  ]
+}

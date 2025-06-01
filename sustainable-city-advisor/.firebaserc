@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": {
+      "database": "your-database-name",
+      "hosting": "your-hosting-name"
+    }
+  }
+}

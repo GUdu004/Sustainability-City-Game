@@ -1,0 +1,33 @@
+{
+  "name": "sustainable-city-advisor",
+  "version": "1.0.0",
+  "description": "A game where players manage a city while balancing environmental, economic, and happiness factors.",
+  "main": "src/main.tsx",
+  "scripts": {
+    "start": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "dependencies": {
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@types/three": "^0.140.0",
+    "@vitejs/plugin-react": "^2.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "three": "^0.140.0",
+    "vite": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "typescript": "^4.5.0"
+  },
+  "keywords": [
+    "game",
+    "sustainability",
+    "city",
+    "advisor"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

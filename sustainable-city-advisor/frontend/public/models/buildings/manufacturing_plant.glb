@@ -1,0 +1,102 @@
+// Basic 3D model of a factory
+// This is a placeholder model created with Three.js Buffer Geometry
+// It uses a simple box for the main building and cylindrical smokestacks
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create the main factory building
+const factoryGeometry = new THREE.BoxGeometry(8, 5, 6);
+const factoryMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x555555,
+  roughness: 0.7,
+  metalness: 0.3
+});
+const factory = new THREE.Mesh(factoryGeometry, factoryMaterial);
+factory.position.y = 2.5;
+scene.add(factory);
+
+// Create smokestacks
+const stackGeometry = new THREE.CylinderGeometry(0.4, 0.5, 8);
+const stackMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x333333,
+  roughness: 0.5,
+  metalness: 0.4
+});
+
+// First smokestack
+const stack1 = new THREE.Mesh(stackGeometry, stackMaterial);
+stack1.position.set(-2, 7, 0);
+scene.add(stack1);
+
+// Second smokestack
+const stack2 = new THREE.Mesh(stackGeometry, stackMaterial);
+stack2.position.set(2, 7, 0);
+scene.add(stack2);
+
+// Create factory doors
+const doorGeometry = new THREE.PlaneGeometry(1.5, 2);
+const doorMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x333333,
+  roughness: 0.5,
+  metalness: 0.2
+});
+
+// Front door
+const frontDoor = new THREE.Mesh(doorGeometry, doorMaterial);
+frontDoor.position.set(0, 1, 3.01);
+scene.add(frontDoor);
+
+// Create windows
+const windowGeometry = new THREE.PlaneGeometry(1, 0.6);
+const windowMaterial = new THREE.MeshStandardMaterial({
+  color: 0x88CCEE,
+  roughness: 0.2,
+  metalness: 0.8
+});
+
+// Add windows around the building
+for (let i = 0; i < 5; i++) {
+  // Front windows
+  const frontWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+  frontWindow.position.set(-3 + i * 1.5, 3.5, 3.01);
+  scene.add(frontWindow);
+  
+  // Back windows
+  const backWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+  backWindow.position.set(-3 + i * 1.5, 3.5, -3.01);
+  backWindow.rotation.y = Math.PI;
+  scene.add(backWindow);
+  
+  // Side windows
+  if (i < 3) {
+    const leftWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+    leftWindow.position.set(-4.01, 3.5, -2 + i * 2);
+    leftWindow.rotation.y = -Math.PI / 2;
+    scene.add(leftWindow);
+    
+    const rightWindow = new THREE.Mesh(windowGeometry, windowMaterial);
+    rightWindow.position.set(4.01, 3.5, -2 + i * 2);
+    rightWindow.rotation.y = Math.PI / 2;
+    scene.add(rightWindow);
+  }
+}
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to manufacturing_plant.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);

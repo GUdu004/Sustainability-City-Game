@@ -1,0 +1,78 @@
+// Basic 3D model of a hospital
+// This is a placeholder model created with Three.js Buffer Geometry
+// It uses a simple box for the main building and a red cross symbol
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create the main hospital building
+const hospitalGeometry = new THREE.BoxGeometry(4, 6, 4);
+const hospitalMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0xffffff,
+  roughness: 0.5,
+  metalness: 0.2
+});
+const hospital = new THREE.Mesh(hospitalGeometry, hospitalMaterial);
+hospital.position.y = 3;
+scene.add(hospital);
+
+// Create windows
+const windowMaterial = new THREE.MeshStandardMaterial({
+  color: 0x88CCEE,
+  roughness: 0.2,
+  metalness: 0.8
+});
+
+// Add windows to each side
+for (let i = 0; i < 4; i++) {
+  for (let j = 0; j < 3; j++) {
+    const windowGeometry = new THREE.PlaneGeometry(0.8, 1);
+    const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
+    
+    if (i === 0) {
+      windowMesh.position.set(-1.5 + j * 1.5, 1 + j * 1.5, 2.01);
+    } else if (i === 1) {
+      windowMesh.position.set(2.01, 1 + j * 1.5, -1.5 + j * 1.5);
+      windowMesh.rotation.y = Math.PI / 2;
+    } else if (i === 2) {
+      windowMesh.position.set(1.5 - j * 1.5, 1 + j * 1.5, -2.01);
+      windowMesh.rotation.y = Math.PI;
+    } else {
+      windowMesh.position.set(-2.01, 1 + j * 1.5, 1.5 - j * 1.5);
+      windowMesh.rotation.y = -Math.PI / 2;
+    }
+    
+    scene.add(windowMesh);
+  }
+}
+
+// Create the red cross
+const crossGeometry1 = new THREE.BoxGeometry(0.8, 2, 0.2);
+const crossGeometry2 = new THREE.BoxGeometry(2, 0.8, 0.2);
+const crossMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+const cross1 = new THREE.Mesh(crossGeometry1, crossMaterial);
+const cross2 = new THREE.Mesh(crossGeometry2, crossMaterial);
+
+cross1.position.set(0, 5, 2.1);
+cross2.position.set(0, 5, 2.1);
+scene.add(cross1);
+scene.add(cross2);
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to hospital.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);

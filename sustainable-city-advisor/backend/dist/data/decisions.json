@@ -1,0 +1,88 @@
+{
+    "decisions": [
+        {
+            "question": "Build a new park in the city?",
+            "choices": [
+                {
+                    "text": "Yes, build the park.",
+                    "impact": {
+                        "environment": 10,
+                        "economy": -5,
+                        "happiness": 15
+                    }
+                },
+                {
+                    "text": "No, keep the area as is.",
+                    "impact": {
+                        "environment": 0,
+                        "economy": 0,
+                        "happiness": 0
+                    }
+                }
+            ]
+        },
+        {
+            "question": "Construct a new factory?",
+            "choices": [
+                {
+                    "text": "Yes, construct the factory.",
+                    "impact": {
+                        "environment": -15,
+                        "economy": 20,
+                        "happiness": -5
+                    }
+                },
+                {
+                    "text": "No, prioritize green initiatives.",
+                    "impact": {
+                        "environment": 5,
+                        "economy": -10,
+                        "happiness": 10
+                    }
+                }
+            ]
+        },
+        {
+            "question": "Implement a recycling program?",
+            "choices": [
+                {
+                    "text": "Yes, start the program.",
+                    "impact": {
+                        "environment": 15,
+                        "economy": -5,
+                        "happiness": 5
+                    }
+                },
+                {
+                    "text": "No, focus on other projects.",
+                    "impact": {
+                        "environment": -5,
+                        "economy": 5,
+                        "happiness": 0
+                    }
+                }
+            ]
+        },
+        {
+            "question": "Increase public transportation options?",
+            "choices": [
+                {
+                    "text": "Yes, invest in public transport.",
+                    "impact": {
+                        "environment": 10,
+                        "economy": -10,
+                        "happiness": 10
+                    }
+                },
+                {
+                    "text": "No, maintain current options.",
+                    "impact": {
+                        "environment": 0,
+                        "economy": 5,
+                        "happiness": -5
+                    }
+                }
+            ]
+        }
+    ]
+}

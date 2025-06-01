@@ -1,0 +1,1649 @@
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { Sky } from 'three/examples/jsm/objects/Sky';
+import { Water } from 'three/examples/jsm/objects/Water';
+
+interface SceneElement {
+  id: string;
+  type: 'building' | 'vegetation' | 'infrastructure' | 'effect';
+  modelPath: string;
+  position: { x: number; y: number; z: number };
+  scale?: { x: number; y: number; z: number };
+  rotation?: { x: number; y: number; z: number };
+}
+
+interface CityViewProps {
+  environmentScore: number;
+  economyScore: number;
+  happinessScore: number;
+  sceneElements: SceneElement[];
+}
+
+const CityView: React.FC<CityViewProps> = ({ 
+  environmentScore = 60, 
+  economyScore = 55, 
+  happinessScore = 65, 
+  sceneElements = [] 
+}) => {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<THREE.Scene>();
+  const rendererRef = useRef<THREE.WebGLRenderer>();
+  const cameraRef = useRef<THREE.PerspectiveCamera>();
+  const controlsRef = useRef<OrbitControls>();
+  const loadedModelsRef = useRef<Map<string, THREE.Object3D>>(new Map());
+  const groundRef = useRef<THREE.Mesh>();
+  const skyRef = useRef<Sky>();
+  const waterRef = useRef<Water>();
+  const cloudsRef = useRef<THREE.Group>(new THREE.Group());
+  const particleSystemsRef = useRef<THREE.Group[]>([]);
+  const directionalLightRef = useRef<THREE.DirectionalLight>();
+  const clockRef = useRef<THREE.Clock>(new THREE.Clock());
+
+  // Create particle system for effects like smoke and pollution
+  const createParticleSystem = (type: string, position: { x: number; y: number; z: number }) => {
+    const particleGroup = new THREE.Group();
+    
+    if (type === 'smoke') {
+      // Enhanced smoke particles for pollution with more variation
+      const particleCount = 200;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        positions[i3] = (Math.random() - 0.5) * 3;  // Wider spread
+        positions[i3+1] = Math.random() * 5;        // Higher column
+        positions[i3+2] = (Math.random() - 0.5) * 3;
+        
+        // More variation in particle sizes
+        sizes[i] = 0.2 + Math.random() * 0.8;
+        
+        // Greater variation in smoke colors (dark gray to light gray with slight brownish tint)
+        const shade = 0.2 + Math.random() * 0.4;
+        colors[i3] = shade + Math.random() * 0.1;     // Slight red tint
+        colors[i3+1] = shade - Math.random() * 0.05;  // Less green
+        colors[i3+2] = shade - Math.random() * 0.1;   // Less blue (creates brownish tint)
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      const material = new THREE.PointsMaterial({
+        size: 0.6,
+        transparent: true,
+        opacity: 0.7,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        sizeAttenuation: true
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1zbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMTItMzBUMDE6Mzc6MjArMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTEyLTMwVDAxOjM4OjU3KzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDphNDFiNGIzMC01OWMzLTRlNjctOTMxNy0zMDFhYjU4NDQwZDciPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmE0MWI0YjMwLTU5YzMtNGU2Ny05MzE3LTMwMWFiNTg0NDBkNyIgc3RFdnQ6d2hlbj0iMjAxOS0xMi0zMFQwMTozNzoyMCswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTggKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+npwEugAAAelJREFUWIXFl0FugzAQRR+ITbfc/1CpEgvUsXRHWHLtSJnJh7sBdXEkkLExfz4e2wIgqep80OQXfZ6SiHmWtOozpucmfSZyE+DzZxY5iNxE5OfPN+kzl3uGqQUt6PytmZ/3yPEaKQTtJvOQnK+R2tDbVUYT+Xs1t9jLb8rMkWw2eA1lxRWhs8IrKLiigPQSiisgPYTlCkjrobkC0lqoroD0FIorPQGXlypwU8Eik5jTB22gRMvxAUm5cLLbAy1zZQ3YmCtrcE43m5dB36zBGbixBgFqrdVsZUbOTFyZUf87OEOFDj2JbX67ucIaRMEVreMCmCsWZQ0i4goWVJmqK3OE5kqLXa4cHYRdrnAp05UrXHGl5srRBZ2qKx11hRUwV1K7WwxcwUJcaeYKCvbKlcwVKmkD5pqXdxaV2gy4gqWuZK5gQ2pzh3G/rqXYqU1zBYHZ3ZWuO4zIFXSB1xVlQKauYHnrCvbUIcxSm8wVJK7Qey4CVykDoYUrKL+4wr/dFXAGnMQVmSu0FuQoVzK1uf+Ku3JkR3ZfV86EKx43V8QKIXsE4sr5sAO83VxJXMGZK9OL1K4CQ64MucIVV+QrV9wBVJnsLHcPVfgn7tH8ht19kv5x7AAAAABJRU5ErkJggg=='),
+      });
+      
+      const smoke = new THREE.Points(particles, material);
+      smoke.position.set(position.x, position.y + 6, position.z);
+      smoke.userData = { particleType: 'smoke', creationTime: Date.now() };
+      particleGroup.add(smoke);
+      
+    } else if (type === 'sparkle') {
+      // Enhanced happiness sparkles with more dynamic animation
+      const particleCount = 120;
+      const particles = new THREE.BufferGeometry();
+      const positions = new Float32Array(particleCount * 3);
+      const sizes = new Float32Array(particleCount);
+      const colors = new Float32Array(particleCount * 3);
+      const velocities = new Float32Array(particleCount * 3);
+      
+      for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        const radius = 2 + Math.random() * 8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        
+        // Spread in a wider sphere
+        positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i3+1] = radius * Math.cos(phi) + 3;
+        positions[i3+2] = radius * Math.sin(phi) * Math.sin(theta);
+        
+        // Add velocities for more dynamic movement
+        velocities[i3] = (Math.random() - 0.5) * 0.02;
+        velocities[i3+1] = Math.random() * 0.02;
+        velocities[i3+2] = (Math.random() - 0.5) * 0.02;
+        
+        // Vary particle sizes more
+        sizes[i] = 0.1 + Math.random() * 0.4;
+        
+        // More vibrant gold/yellow colors with variation
+        colors[i3] = 1.0; // R
+        colors[i3+1] = 0.7 + Math.random() * 0.3; // G
+        colors[i3+2] = 0.0 + Math.random() * 0.3; // B
+      }
+      
+      particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      particles.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      
+      // Store velocities in userData for animation
+      const material = new THREE.PointsMaterial({
+        size: 0.3,
+        transparent: true,
+        opacity: 0.8,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        map: new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAsTAAALEwEAmpwYAAAFFmlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDAgNzkuMTYwNDUxLCAyMDE3LzA1LzA2LTAxOjA4OjIxICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1zbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8
