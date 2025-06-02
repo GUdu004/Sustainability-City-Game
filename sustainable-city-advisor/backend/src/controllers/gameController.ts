@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import gameService from '../services/gameService';
-import { GameStateResponse, DecisionResponse, DecisionMakeResponse } from '../types';
+import { GameStateResponse, DecisionResponse, DecisionMakeResponse, AchievementResponse } from '../types';
 
 export const getCurrentGameState = (req: Request, res: Response): void => {
     try {
@@ -75,7 +75,8 @@ export const makeDecision = (req: Request, res: Response): void => {
             newStats: result.newStats,
             sceneChanges: result.sceneChanges,
             gameStatus: result.gameStatus,
-            nextDecisionAvailable: result.nextDecisionAvailable
+            nextDecisionAvailable: result.nextDecisionAvailable,
+            achievementsUnlocked: result.achievementsUnlocked
         };
         res.status(200).json(response);
     } catch (error) {
@@ -106,6 +107,24 @@ export const resetGame = (req: Request, res: Response): void => {
             success: false,
             data: gameService.getCurrentGameState(),
             error: 'Error resetting game'
+        };
+        res.status(500).json(response);
+    }
+};
+
+export const getAchievements = (req: Request, res: Response): void => {
+    try {
+        const achievements = gameService.getAchievements();
+        const response: AchievementResponse = {
+            success: true,
+            data: achievements
+        };
+        res.status(200).json(response);
+    } catch (error) {
+        const response: AchievementResponse = {
+            success: false,
+            data: { unlocked: [], progress: {} },
+            error: 'Error retrieving achievements'
         };
         res.status(500).json(response);
     }

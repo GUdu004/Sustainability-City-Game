@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCurrentGameState, getNextDecision, makeDecision, resetGame } from '../controllers/gameController';
+import { getCurrentGameState, getNextDecision, makeDecision, resetGame, getAchievements } from '../controllers/gameController';
 
 const router = Router();
 
@@ -14,5 +14,8 @@ router.post('/decision', makeDecision);
 
 // POST /api/game/reset - Reset the game
 router.post('/reset', resetGame);
+
+// GET /api/game/achievements - Get achievements
+router.get('/achievements', getAchievements);
 
 export default router;

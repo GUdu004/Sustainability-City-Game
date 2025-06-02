@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetGame = exports.makeDecision = exports.getNextDecision = exports.getCurrentGameState = void 0;
+exports.getAchievements = exports.resetGame = exports.makeDecision = exports.getNextDecision = exports.getCurrentGameState = void 0;
 const gameService_1 = __importDefault(require("../services/gameService"));
 const getCurrentGameState = (req, res) => {
     try {
@@ -77,7 +77,8 @@ const makeDecision = (req, res) => {
             newStats: result.newStats,
             sceneChanges: result.sceneChanges,
             gameStatus: result.gameStatus,
-            nextDecisionAvailable: result.nextDecisionAvailable
+            nextDecisionAvailable: result.nextDecisionAvailable,
+            achievementsUnlocked: result.achievementsUnlocked
         };
         res.status(200).json(response);
     }
@@ -115,3 +116,22 @@ const resetGame = (req, res) => {
     }
 };
 exports.resetGame = resetGame;
+const getAchievements = (req, res) => {
+    try {
+        const achievements = gameService_1.default.getAchievements();
+        const response = {
+            success: true,
+            data: achievements
+        };
+        res.status(200).json(response);
+    }
+    catch (error) {
+        const response = {
+            success: false,
+            data: { unlocked: [], progress: {} },
+            error: 'Error retrieving achievements'
+        };
+        res.status(500).json(response);
+    }
+};
+exports.getAchievements = getAchievements;

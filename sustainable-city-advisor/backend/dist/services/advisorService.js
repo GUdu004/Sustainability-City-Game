@@ -2,26 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAdvisorMessage = exports.generateAdvisorMessage = void 0;
 const geminiService_1 = require("./geminiService");
-const generateAdvisorMessage = async (gameState, context = 'current_state') => {
+const generateAdvisorMessage = async (gameState, context = 'current_state', currentDecision) => {
     const { environment, economy, happiness } = gameState.stats;
-    // Determine the advisor's personality based on overall performance
-    const averageScore = (environment + economy + happiness) / 3;
-    let personality;
-    let priority;
-    // Determine personality
-    if (averageScore >= 70) {
-        personality = 'optimistic';
-    }
-    else if (averageScore >= 50) {
-        personality = 'encouraging';
-    }
-    else if (averageScore >= 30) {
-        personality = 'concerned';
-    }
-    else {
-        personality = 'sarcastic';
-    }
+    // Get recommended personality based on game state
+    const recommendedPersonality = (0, geminiService_1.getRecommendedPersonality)(gameState);
     // Determine priority area (lowest scoring stat)
+    let priority;
     if (environment <= economy && environment <= happiness) {
         priority = 'environment';
     }
@@ -31,40 +17,75 @@ const generateAdvisorMessage = async (gameState, context = 'current_state') => {
     else {
         priority = 'happiness';
     }
-    // Generate message based on game state
-    let message = '';
-    switch (personality) {
-        case 'optimistic':
-            message = generateOptimisticMessage(gameState.stats, priority);
-            break;
-        case 'encouraging':
-            message = generateEncouragingMessage(gameState.stats, priority);
-            break;
-        case 'concerned':
-            message = generateConcernedMessage(gameState.stats, priority);
-            break;
-        case 'sarcastic':
-            message = generateSarcasticMessage(gameState.stats, priority);
-            break;
-    }
-    // Try to get AI-enhanced advice (fallback to rule-based if AI fails)
+    // Try to get AI-enhanced advice first
     try {
-        const geminiAdvice = await (0, geminiService_1.fetchGeminiAdvice)(gameState);
-        if (geminiAdvice) {
-            message += `\n\n${geminiAdvice}`;
+        const geminiContext = context === 'current_state' ? 'general' : context;
+        const aiAdvice = await (0, geminiService_1.fetchGeminiAdvice)(gameState, recommendedPersonality, currentDecision, geminiContext);
+        if (aiAdvice) {
+            return {
+                message: aiAdvice,
+                personality: mapToLegacyPersonality(recommendedPersonality),
+                priority,
+                context
+            };
         }
     }
     catch (error) {
-        console.warn('Failed to get Gemini advice, using rule-based message only');
+        console.error('AI advisor failed, falling back to rule-based:', error);
     }
+    // Fallback to enhanced rule-based advisor
+    const ruleBasedPersonality = getRuleBasedPersonality(gameState);
+    const message = generateRuleBasedMessage(gameState.stats, priority, ruleBasedPersonality, context);
     return {
         message,
-        personality,
+        personality: ruleBasedPersonality,
         priority,
         context
     };
 };
 exports.generateAdvisorMessage = generateAdvisorMessage;
+function mapToLegacyPersonality(modernPersonality) {
+    switch (modernPersonality) {
+        case 'analytical':
+        case 'pragmatic':
+            return 'concerned';
+        case 'creative':
+            return 'encouraging';
+        case 'optimistic':
+        default:
+            return 'optimistic';
+    }
+}
+function getRuleBasedPersonality(gameState) {
+    const { environment, economy, happiness } = gameState.stats;
+    const averageScore = (environment + economy + happiness) / 3;
+    if (averageScore >= 70) {
+        return 'optimistic';
+    }
+    else if (averageScore >= 50) {
+        return 'encouraging';
+    }
+    else if (averageScore >= 30) {
+        return 'concerned';
+    }
+    else {
+        return 'sarcastic';
+    }
+}
+function generateRuleBasedMessage(stats, priority, personality, context) {
+    switch (personality) {
+        case 'optimistic':
+            return generateOptimisticMessage(stats, priority);
+        case 'encouraging':
+            return generateEncouragingMessage(stats, priority);
+        case 'concerned':
+            return generateConcernedMessage(stats, priority);
+        case 'sarcastic':
+            return generateSarcasticMessage(stats, priority);
+        default:
+            return generateEncouragingMessage(stats, priority);
+    }
+}
 function generateOptimisticMessage(stats, priority) {
     const messages = [
         "Excellent work! Your city is thriving across all sectors!",
@@ -89,7 +110,10 @@ function generateEncouragingMessage(stats, priority) {
         economy: "Solid foundation! Some strategic economic investments could really accelerate growth.",
         happiness: "Good work so far! Your citizens would appreciate more community-focused improvements."
     };
-    return `You're on the right track! ${specificAdvice[priority]} Keep making thoughtful decisions!`;
+    if (priority && specificAdvice[priority]) {
+        return `You're on the right track! ${specificAdvice[priority]} Keep making thoughtful decisions!`;
+    }
+    return "You're doing well! Keep focusing on balanced development for the best results.";
 }
 function generateConcernedMessage(stats, priority) {
     const concerns = {
@@ -97,7 +121,10 @@ function generateConcernedMessage(stats, priority) {
         economy: "The economic situation is becoming precarious. We need to focus on sustainable growth.",
         happiness: "Citizen satisfaction is dropping. We must address their concerns before it's too late!"
     };
-    return `${concerns[priority]} Time for decisive action.`;
+    if (priority && concerns[priority]) {
+        return `${concerns[priority]} Time for decisive action.`;
+    }
+    return "Several areas need attention. We must act quickly to prevent further decline.";
 }
 function generateSarcasticMessage(stats, priority) {
     const sarcasticComments = [

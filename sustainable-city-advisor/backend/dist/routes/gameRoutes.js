@@ -11,4 +11,6 @@ router.get('/decision', gameController_1.getNextDecision);
 router.post('/decision', gameController_1.makeDecision);
 // POST /api/game/reset - Reset the game
 router.post('/reset', gameController_1.resetGame);
+// GET /api/game/achievements - Get achievements
+router.get('/achievements', gameController_1.getAchievements);
 exports.default = router;

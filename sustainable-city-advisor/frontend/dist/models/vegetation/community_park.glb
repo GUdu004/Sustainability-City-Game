@@ -1,0 +1,135 @@
+// Basic 3D model of park with trees, benches and a small pond
+// This is a placeholder model created with Three.js Buffer Geometry
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create the park base/ground
+const groundGeometry = new THREE.CircleGeometry(5, 24);
+const groundMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x3a5f3a, // Grass green
+  roughness: 0.9,
+  metalness: 0.0
+});
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = 0.01;
+scene.add(ground);
+
+// Create a small pond
+const pondGeometry = new THREE.CircleGeometry(1.5, 24);
+const pondMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x4A90E2, // Water blue
+  roughness: 0.2,
+  metalness: 0.1
+});
+const pond = new THREE.Mesh(pondGeometry, pondMaterial);
+pond.rotation.x = -Math.PI / 2;
+pond.position.y = 0.02;
+pond.position.z = 1.5;
+scene.add(pond);
+
+// Create trees
+const createTree = (x, z, scale) => {
+  const treeGroup = new THREE.Group();
+  
+  // Tree trunk
+  const trunkGeometry = new THREE.CylinderGeometry(0.1 * scale, 0.15 * scale, 1 * scale);
+  const trunkMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x8B4513,
+    roughness: 0.9,
+    metalness: 0.1
+  });
+  const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+  trunk.position.y = 0.5 * scale;
+  treeGroup.add(trunk);
+  
+  // Tree leaves
+  const leavesGeometry = new THREE.SphereGeometry(0.5 * scale, 8, 8);
+  const leavesMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x228B22,
+    roughness: 0.8,
+    metalness: 0.1
+  });
+  const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+  leaves.position.y = 1.2 * scale;
+  treeGroup.add(leaves);
+  
+  treeGroup.position.set(x, 0, z);
+  scene.add(treeGroup);
+};
+
+// Add multiple trees around the park
+createTree(-3, -2, 1.2);
+createTree(3, -3, 1.5);
+createTree(-2, 3, 1.0);
+createTree(3, 2, 1.3);
+
+// Create park benches
+const createBench = (x, z, rotation) => {
+  const benchGroup = new THREE.Group();
+  
+  // Bench seat
+  const seatGeometry = new THREE.BoxGeometry(1.2, 0.1, 0.4);
+  const seatMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x8B7355, // Wood brown
+    roughness: 0.7,
+    metalness: 0.1
+  });
+  const seat = new THREE.Mesh(seatGeometry, seatMaterial);
+  seat.position.y = 0.3;
+  benchGroup.add(seat);
+  
+  // Bench back
+  const backGeometry = new THREE.BoxGeometry(1.2, 0.4, 0.05);
+  const back = new THREE.Mesh(backGeometry, seatMaterial);
+  back.position.y = 0.5;
+  back.position.z = -0.175;
+  benchGroup.add(back);
+  
+  // Bench legs
+  const legGeometry = new THREE.BoxGeometry(0.1, 0.3, 0.4);
+  const legMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x444444,
+    roughness: 0.5,
+    metalness: 0.5
+  });
+  
+  // Left leg
+  const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+  leftLeg.position.set(-0.5, 0.15, 0);
+  benchGroup.add(leftLeg);
+  
+  // Right leg
+  const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+  rightLeg.position.set(0.5, 0.15, 0);
+  benchGroup.add(rightLeg);
+  
+  benchGroup.position.set(x, 0, z);
+  benchGroup.rotation.y = rotation;
+  scene.add(benchGroup);
+};
+
+// Add benches
+createBench(-2, 0, 0);
+createBench(2, 0, Math.PI);
+createBench(0, -3, Math.PI / 2);
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to community_park.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);

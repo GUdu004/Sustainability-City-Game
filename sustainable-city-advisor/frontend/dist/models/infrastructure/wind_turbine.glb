@@ -1,0 +1,85 @@
+// Basic 3D model of a wind turbine
+// This is a placeholder model created with Three.js Buffer Geometry
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create turbine tower
+const towerGeometry = new THREE.CylinderGeometry(0.3, 0.4, 12, 12);
+const towerMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0xCCCCCC,
+  roughness: 0.3,
+  metalness: 0.7
+});
+const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+tower.position.y = 6;
+scene.add(tower);
+
+// Create nacelle (generator housing)
+const nacelleGeometry = new THREE.BoxGeometry(1.5, 0.8, 0.8);
+const nacelleMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0xDDDDDD,
+  roughness: 0.3,
+  metalness: 0.7
+});
+const nacelle = new THREE.Mesh(nacelleGeometry, nacelleMaterial);
+nacelle.position.y = 12;
+scene.add(nacelle);
+
+// Create rotor hub
+const hubGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+const hubMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0xCCCCCC,
+  roughness: 0.3,
+  metalness: 0.7
+});
+const hub = new THREE.Mesh(hubGeometry, hubMaterial);
+hub.position.set(0.8, 12, 0);
+scene.add(hub);
+
+// Create turbine blades
+const bladeGeometry = new THREE.BoxGeometry(5, 0.1, 0.5);
+bladeGeometry.translate(2.5, 0, 0); // Move origin to the end of the blade
+const bladeMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0xFFFFFF,
+  roughness: 0.2,
+  metalness: 0.3
+});
+
+// Create three blades at 120-degree intervals
+for (let i = 0; i < 3; i++) {
+  const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+  blade.position.set(0.8, 12, 0); // Position at the hub
+  blade.rotation.z = i * (Math.PI * 2 / 3); // 120-degree spacing
+  scene.add(blade);
+}
+
+// Create a simple base
+const baseGeometry = new THREE.CylinderGeometry(1, 1.2, 0.5, 16);
+const baseMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x999999,
+  roughness: 0.8,
+  metalness: 0.2
+});
+const base = new THREE.Mesh(baseGeometry, baseMaterial);
+base.position.y = 0.25;
+scene.add(base);
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to wind_turbine.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);

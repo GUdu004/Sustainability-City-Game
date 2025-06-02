@@ -1,0 +1,63 @@
+// Basic 3D model of a tree
+// This is a placeholder model created with Three.js Buffer Geometry
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create the tree trunk
+const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 2);
+const trunkMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x8B4513,
+  roughness: 0.9,
+  metalness: 0.1
+});
+const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+trunk.position.y = 1;
+scene.add(trunk);
+
+// Create the tree leaves/canopy
+const leavesGeometry = new THREE.SphereGeometry(1, 12, 12);
+const leavesMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x228B22,
+  roughness: 0.8,
+  metalness: 0.1
+});
+const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+leaves.position.y = 2.5;
+scene.add(leaves);
+
+// Add some detail to the leaves by creating a few smaller spheres
+for (let i = 0; i < 5; i++) {
+  const detailGeometry = new THREE.SphereGeometry(0.6, 8, 8);
+  const detailMesh = new THREE.Mesh(detailGeometry, leavesMaterial);
+  
+  // Position the detail spheres around the main leaves sphere
+  const angle = i * Math.PI * 2 / 5;
+  const radius = 0.7;
+  detailMesh.position.set(
+    Math.cos(angle) * radius,
+    2.5 + (Math.random() * 0.5 - 0.25),
+    Math.sin(angle) * radius
+  );
+  
+  scene.add(detailMesh);
+}
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to tree.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);

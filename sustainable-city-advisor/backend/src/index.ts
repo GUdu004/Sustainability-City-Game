@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
@@ -37,10 +38,17 @@ app.get('/', (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+    res.json({ 
+        status: 'healthy', 
+        timestamp: new Date().toISOString(),
+        geminiEnabled: Boolean(process.env.GEMINI_API_KEY)
+    });
 });
 
 app.listen(PORT, () => {
     console.log(`🚀 Sustainable City Advisor API is running on http://localhost:${PORT}`);
     console.log(`📱 Frontend should connect to: http://localhost:${PORT}/api`);
+    if (!process.env.GEMINI_API_KEY) {
+        console.warn('⚠️ Warning: GEMINI_API_KEY is not set. AI advisor will use fallback mode.');
+    }
 });

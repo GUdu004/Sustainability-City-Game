@@ -1,4 +1,5 @@
-import { GameState, GameStats, Decision, Choice, SceneElement, SceneChange } from '../types';
+import { GameState, GameStats, Decision, Choice, SceneElement, SceneChange, Achievement } from '../types';
+import { achievementTracker } from './achievementService';
 import decisionsData from '../data/decisions.json';
 
 class GameService {
@@ -61,16 +62,8 @@ class GameService {
         if (impact.happiness < 0) effects.push("decreased citizen satisfaction");
         
         return effects.length > 0 ? `This choice resulted in ${effects.join(", ")}.` : "This choice had minimal impact.";
-    }
-
-    private initializeGameState(): GameState {
+    }    private initializeGameState(): GameState {
         const initialSceneElements: SceneElement[] = [
-            {
-                id: 'base_terrain',
-                type: 'infrastructure',
-                modelPath: '/models/infrastructure/terrain.glb',
-                position: { x: 0, y: 0, z: 0 }
-            },
             {
                 id: 'city_hall',
                 type: 'building',
@@ -86,7 +79,7 @@ class GameService {
                 happiness: 50
             },
             turn: 1,
-            maxTurns: 10,
+            maxTurns: 15,
             gameStatus: 'active',
             sceneElements: initialSceneElements
         };
@@ -94,33 +87,49 @@ class GameService {
 
     public getCurrentGameState(): GameState {
         return { ...this.gameState };
-    }
-
-    public getNextDecision(): Decision | null {
-        const availableDecisions = this.decisions.filter((d) => !this.usedDecisionIds.has(d.id));
+    }    public getNextDecision(): Decision | null {
+        console.log('Getting next decision. Used decisions:', Array.from(this.usedDecisionIds));
+        console.log('Current game status:', this.gameState.gameStatus);
+        console.log('Current turn:', this.gameState.turn, 'Max turns:', this.gameState.maxTurns);
         
-        if (availableDecisions.length === 0) {
+        // If we're at the game end, don't provide more decisions
+        if (this.gameState.gameStatus === 'ended') {
+            console.log('Game has ended. No more decisions available.');
             return null;
         }
+        
+        // Filter out used decisions
+        const availableDecisions = this.decisions.filter((d) => !this.usedDecisionIds.has(d.id));
+        console.log(`Available decisions: ${availableDecisions.length}, Total decisions: ${this.decisions.length}`);
+        
+        // If we've used all decisions, reset the used decisions set
+        if (availableDecisions.length === 0) {
+            console.log('No more unused decisions. Resetting used decisions tracking.');
+            this.usedDecisionIds.clear();
+            // Now all decisions are available again
+            return this.getNextDecision();
+        }
 
+        // Select a random decision from available ones
         const randomIndex = Math.floor(Math.random() * availableDecisions.length);
         const selectedDecision = availableDecisions[randomIndex];
         
         // Validate that we have a valid decision
         if (!selectedDecision?.id || !selectedDecision?.choices?.length) {
+            console.error('Invalid decision selected:', selectedDecision);
             return null;
         }
         
+        console.log('Selected decision:', selectedDecision.id, selectedDecision.title);
         return selectedDecision;
-    }
-
-    public makeDecision(decisionId: string, choiceId: string): {
+    }public makeDecision(decisionId: string, choiceId: string): {
         feedback: string;
         statChanges: GameStats;
         newStats: GameStats;
         sceneChanges: SceneChange[];
         gameStatus: 'active' | 'ended';
         nextDecisionAvailable: boolean;
+        achievementsUnlocked: Achievement[];
     } {
         const decision = this.decisions.find((d: Decision) => d.id === decisionId);
         if (!decision) {
@@ -145,9 +154,42 @@ class GameService {
         this.gameState.stats.economy = Math.max(0, Math.min(100, this.gameState.stats.economy + statChanges.economy));
         this.gameState.stats.happiness = Math.max(0, Math.min(100, this.gameState.stats.happiness + statChanges.happiness));
 
-        this.gameState.turn++;
+        this.gameState.turn++;        // Track achievement progress after stats update
+        const achievementsUnlocked = achievementTracker.updateProgress(
+            this.gameState,
+            { type: decision.category, choice: choice }
+        );
 
         const sceneChanges = this.generateSceneChanges(choice);
+        
+        // Add achievement visual effects to scene changes
+        achievementsUnlocked.forEach(achievement => {
+            if (achievement.reward?.visualEffect) {
+                sceneChanges.push({
+                    action: 'add',
+                    element: {
+                        id: `achievement_effect_${achievement.id}_${Date.now()}`,
+                        type: 'effect',
+                        modelPath: `/models/effects/${achievement.reward.visualEffect}.glb`,
+                        position: this.getAvailableBuildingPosition('effect'),
+                        scale: { x: 1.5, y: 1.5, z: 1.5 }
+                    }
+                });
+            }
+            
+            if (achievement.reward?.cityElement) {
+                sceneChanges.push({
+                    action: 'add',
+                    element: {
+                        id: `achievement_building_${achievement.id}_${Date.now()}`,
+                        type: 'building',
+                        modelPath: `/models/buildings/${achievement.reward.cityElement}.glb`,
+                        position: this.getAvailableBuildingPosition('building'),
+                        scale: { x: 1.2, y: 1.2, z: 1.2 }
+                    }
+                });
+            }
+        });
         
         sceneChanges.forEach((change: SceneChange) => {
             if (change.action === 'add') {
@@ -174,10 +216,15 @@ class GameService {
             newStats: { ...this.gameState.stats },
             sceneChanges,
             gameStatus: this.gameState.gameStatus,
-            nextDecisionAvailable
+            nextDecisionAvailable,
+            achievementsUnlocked
         };
     }
     
+    public getDecisionById(decisionId: string): Decision | undefined {
+        return this.decisions.find((d: Decision) => d.id === decisionId);
+    }
+
     private generateSceneChanges(choice: Choice): SceneChange[] {
         const changes: SceneChange[] = [];
         const choiceText = choice.text.toLowerCase();
@@ -735,9 +782,7 @@ class GameService {
     
     private getLastBuildingPosition(): { x: number; y: number; z: number } {
         return { ...this.lastBuildingPosition, y: 4 };
-    }
-
-    private checkEndConditions(): void {
+    }    private checkEndConditions(): void {
         const stats = this.gameState.stats;
         const { environment, economy, happiness } = stats;
 
@@ -745,30 +790,55 @@ class GameService {
             this.gameState.gameStatus = 'ended';
             this.gameState.endingType = 'failure';
             this.gameState.endingTitle = 'Economic and Environmental Collapse';
-        } else if (happiness <= 10) {
+            this.gameState.endingDescription = 'Your city has fallen into complete disarray. Both the economy and environment have collapsed, leaving citizens desperate and the city uninhabitable.';        } else if (happiness <= 10) {
             this.gameState.gameStatus = 'ended';
             this.gameState.endingType = 'failure';
             this.gameState.endingTitle = 'Citizen Revolt';
-        } else if (this.gameState.turn > this.gameState.maxTurns) {
+            this.gameState.endingDescription = 'The people have risen up against your leadership. Despite your efforts, citizen satisfaction has plummeted to dangerous levels.';
+        } else if (this.gameState.turn >= this.gameState.maxTurns) {
             const averageScore = (environment + economy + happiness) / 3;
-            if (averageScore >= 80) {
+            const unlockedAchievements = achievementTracker.getUnlockedAchievements();
+            const achievementCount = unlockedAchievements.length;
+            
+            if (averageScore >= 80 && achievementCount >= 5) {
+                this.gameState.gameStatus = 'ended';
+                this.gameState.endingType = 'victory';
+                this.gameState.endingTitle = 'Legendary City Leader';
+                this.gameState.endingDescription = `Exceptional! You've created a truly sustainable city with an average score of ${averageScore.toFixed(1)} and unlocked ${achievementCount} achievements. Your legacy will inspire generations of city planners.`;
+            } else if (averageScore >= 80) {
                 this.gameState.gameStatus = 'ended';
                 this.gameState.endingType = 'victory';
                 this.gameState.endingTitle = 'Sustainable City Achievement';
+                this.gameState.endingDescription = `Excellent work! Your city achieved sustainability with an average score of ${averageScore.toFixed(1)}. The citizens live in harmony with nature and prosperity.`;
+            } else if (averageScore >= 60 && achievementCount >= 3) {
+                this.gameState.gameStatus = 'ended';
+                this.gameState.endingType = 'victory';
+                this.gameState.endingTitle = 'Accomplished Leader';
+                this.gameState.endingDescription = `Good progress! With an average score of ${averageScore.toFixed(1)} and ${achievementCount} achievements, you've shown real leadership potential.`;
             } else if (averageScore >= 60) {
                 this.gameState.gameStatus = 'ended';
                 this.gameState.endingType = 'victory';
                 this.gameState.endingTitle = 'Decent Progress';
+                this.gameState.endingDescription = `Your city shows promise with an average score of ${averageScore.toFixed(1)}. With more experience, you could become a great leader.`;
             } else {
                 this.gameState.gameStatus = 'ended';
                 this.gameState.endingType = 'failure';
                 this.gameState.endingTitle = 'Mediocre Leadership';
+                this.gameState.endingDescription = `Your leadership resulted in an average score of ${averageScore.toFixed(1)}. The city survived, but citizens expected more from their leader.`;
             }
         }
     }
 
+    public getAchievements(): { unlocked: Achievement[]; progress: Record<string, number> } {
+        return {
+            unlocked: achievementTracker.getUnlockedAchievements(),
+            progress: achievementTracker.getProgress()
+        };
+    }
+
     public resetGame(): GameState {
         this.usedDecisionIds.clear();
+        achievementTracker.reset();
         this.gameState = this.initializeGameState();
         return this.getCurrentGameState();
     }

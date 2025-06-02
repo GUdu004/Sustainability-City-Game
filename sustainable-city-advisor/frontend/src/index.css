@@ -647,99 +647,449 @@ body {
     cursor: pointer;
 }
 
-/* Responsive Design */
-@media (max-width: 1200px) {
-    .app-main {
-        grid-template-columns: 280px 1fr 320px;
-    }
+/* Enhanced Header Styles */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
-@media (max-width: 992px) {
-    .app-main {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto 1fr;
-        gap: 1rem;
-    }
-    
-    .left-panel, .right-panel {
-        flex-direction: row;
-        overflow-x: auto;
-        overflow-y: visible;
-    }
-    
-    .center-panel {
-        order: -1;
-        min-height: 400px;
-    }
-    
-    .final-stats {
-        grid-template-columns: 1fr;
-    }
-    
-    .end-game-actions {
-        flex-direction: column;
-        align-items: center;
-    }
+.achievements-button {
+    background: linear-gradient(45deg, #f39c12, #e67e22);
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(243, 156, 18, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-@media (max-width: 768px) {
-    .app-header {
-        padding: 1rem;
-        flex-direction: column;
-        gap: 1rem;
-        text-align: center;
-    }
-    
-    .app-header h1 {
-        font-size: 1.5rem;
-    }
-    
-    .app-main {
-        padding: 0.5rem;
-    }
-    
-    .advisor-header {
-        flex-direction: column;
-        text-align: center;
-    }
-    
-    .choices-container {
-        gap: 0.8rem;
-    }
-    
-    .choice-impacts {
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-    
-    .end-game-screen {
-        padding: 2rem 1rem;
-        margin: 1rem;
-    }
-    
-    .end-game-title {
-        font-size: 2rem;
-    }
-    
-    .overall-grade {
-        font-size: 3rem;
-    }
+.achievements-button:hover {
+    background: linear-gradient(45deg, #e67e22, #d35400);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(243, 156, 18, 0.4);
 }
 
-/* Utility Classes */
-.text-center {
+/* Achievement Panel Styles */
+.achievement-panel-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease;
+}
+
+.achievement-panel {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 20px;
+    padding: 2rem;
+    max-width: 800px;
+    max-height: 80vh;
+    width: 90%;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    animation: slideInUp 0.4s ease;
+}
+
+.achievement-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.achievement-panel-header h2 {
+    color: #2c3e50;
+    font-size: 2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.achievement-panel-close {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.achievement-panel-close:hover {
+    background: #c0392b;
+    transform: scale(1.1);
+}
+
+.achievement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.achievement-card {
+    background: white;
+    border-radius: 15px;
+    padding: 1.5rem;
+    border: 2px solid #ecf0f1;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.achievement-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    border-color: #3498db;
+}
+
+.achievement-card.unlocked {
+    border-color: #27ae60;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fff8 100%);
+}
+
+.achievement-card.unlocked::before {
+    content: '✓';
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: #27ae60;
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1rem;
+}
+
+.achievement-card.locked {
+    opacity: 0.6;
+    border-color: #bdc3c7;
+    background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+}
+
+.achievement-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.achievement-icon {
+    font-size: 2.5rem;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 15px;
+    background: linear-gradient(45deg, #3498db, #2980b9);
+    color: white;
+    box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+}
+
+.achievement-info h3 {
+    color: #2c3e50;
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+
+.achievement-info p {
+    color: #7f8c8d;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.achievement-progress {
+    margin-top: 1rem;
+}
+
+.progress-bar {
+    background: #ecf0f1;
+    border-radius: 10px;
+    height: 8px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    background: linear-gradient(90deg, #3498db, #2980b9);
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 0.85rem;
+    color: #7f8c8d;
     text-align: center;
 }
 
-.hidden {
-    display: none;
+.achievement-stats {
+    background: #f8f9fa;
+    border-radius: 15px;
+    padding: 1.5rem;
+    margin-top: 1rem;
 }
 
-.fade-in {
-    animation: fadeIn 0.5s ease-in;
+.achievement-stats h3 {
+    color: #2c3e50;
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 1rem;
+    background: white;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #3498db;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #7f8c8d;
+    font-weight: 500;
+}
+
+/* Achievement Notification Styles */
+.achievement-notification {
+    position: fixed;
+    top: 100px;
+    right: 2rem;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 15px;
+    padding: 1.5rem;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+    border: 2px solid #27ae60;
+    max-width: 350px;
+    z-index: 1001;
+    animation: slideInRight 0.5s ease, pulse 0.3s ease 0.5s;
+}
+
+.notification-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.notification-title {
+    color: #27ae60;
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.notification-close {
+    background: transparent;
+    border: none;
+    color: #95a5a6;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-close:hover {
+    color: #e74c3c;
+}
+
+.notification-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.notification-icon {
+    font-size: 2.5rem;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 15px;
+    background: linear-gradient(45deg, #27ae60, #2ecc71);
+    color: white;
+    box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
+    flex-shrink: 0;
+}
+
+.notification-details h3 {
+    color: #2c3e50;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+
+.notification-details p {
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+/* Animations */
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+/* Enhanced Visual Effects for Achievements */
+.achievement-glow {
+    position: relative;
+}
+
+.achievement-glow::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(45deg, #f39c12, #e67e22, #d35400, #f39c12);
+    border-radius: 17px;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background-size: 400% 400%;
+    animation: gradientShift 3s ease infinite;
+}
+
+.achievement-glow:hover::after {
+    opacity: 1;
+}
+
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Responsive Design for Achievement Components */
+@media (max-width: 768px) {
+    .achievement-panel {
+        width: 95%;
+        padding: 1.5rem;
+        max-height: 90vh;
+    }
+    
+    .achievement-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .achievement-card {
+        padding: 1rem;
+    }
+    
+    .achievement-notification {
+        right: 1rem;
+        left: 1rem;
+        max-width: none;
+    }
+    
+    .header-controls {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-end;
+    }
+    
+    .achievements-button {
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Auto-dismiss notification after delay */
+.achievement-notification.dismissing {
+    animation: fadeOut 0.5s ease forwards;
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(100%);
+    }
 }

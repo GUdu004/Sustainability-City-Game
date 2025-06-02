@@ -9,7 +9,14 @@ export const getAdvisor = async (req: Request, res: Response): Promise<void> => 
         const gameState = gameService.getCurrentGameState();
         const context = req.query.context as 'current_state' | 'decision_specific' || 'current_state';
         
-        const advisorMessage = await generateAdvisorMessage(gameState, context);
+        // If a decision ID is specified, get that decision for more specific advice
+        let currentDecision;
+        if (req.query.decisionId) {
+            const decisionId = req.query.decisionId as string;
+            currentDecision = gameService.getDecisionById(decisionId);
+        }
+        
+        const advisorMessage = await generateAdvisorMessage(gameState, context, currentDecision);
         
         const response: AdvisorResponse = {
             success: true,
@@ -18,6 +25,7 @@ export const getAdvisor = async (req: Request, res: Response): Promise<void> => 
         
         res.status(200).json(response);
     } catch (error) {
+        console.error('Advisor error:', error);
         const response: AdvisorResponse = {
             success: false,
             data: {

@@ -34,19 +34,26 @@ const AdvisorArea: React.FC<AdvisorAreaProps> = ({ gameState, onRefreshAdvice })
     useEffect(() => {
         const mood = getAdvisorMood(gameState);
         setAdvisorMood(mood);
-    }, [gameState]);
-
-    useEffect(() => {
+        
+        // Fetch new advisor message when game state changes
         const getAdvisorMessage = async () => {
             setIsLoading(true);
             try {
+                console.log('Fetching advisor message for game state:', 
+                    {turn: gameState.turn, 
+                     stats: gameState.stats, 
+                     gameStatus: gameState.gameStatus});
+                     
                 const response = await fetchAdvisorMessage();
                 if (response.success && response.data) {
+                    console.log('New advisor message received:', response.data.message);
                     setAdvisorMessage(response.data.message);
                 } else {
+                    console.warn('Failed to get advisor message, using fallback');
                     setAdvisorMessage("I'm here to help guide your city towards sustainability. Check your stats and make wise decisions!");
                 }
             } catch (error) {
+                console.error('Error fetching advisor message:', error);
                 setAdvisorMessage("I'm here to help guide your city towards sustainability. Check your stats and make wise decisions!");
             } finally {
                 setIsLoading(false);
@@ -54,7 +61,7 @@ const AdvisorArea: React.FC<AdvisorAreaProps> = ({ gameState, onRefreshAdvice })
         };
 
         getAdvisorMessage();
-    }, [gameState.turn]);
+    }, [gameState]); // Adding gameState as a dependency to ensure this runs on any gameState change
 
     const handleRefreshAdvice = () => {
         onRefreshAdvice();

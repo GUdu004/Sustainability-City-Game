@@ -16,7 +16,11 @@ const DecisionArea: React.FC<DecisionAreaProps> = ({ onDecisionMade, gameState }
 
     useEffect(() => {
         if (gameState.gameStatus === 'active') {
+            console.log('DecisionArea: Game state changed - fetching new decision');
+            console.log('Current turn:', gameState.turn, 'Game status:', gameState.gameStatus);
             fetchDecision();
+        } else {
+            console.log('DecisionArea: Game is not active, not fetching new decision');
         }
     }, [gameState.turn, gameState.gameStatus]);
 
@@ -24,16 +28,19 @@ const DecisionArea: React.FC<DecisionAreaProps> = ({ onDecisionMade, gameState }
         setIsLoading(true);
         setError(null);
         try {
+            console.log('Fetching new decision...');
             const response = await fetchCurrentDecision();
             if (response.success && response.data) {
+                console.log('New decision received:', response.data);
                 setDecision(response.data);
             } else {
+                console.error('Failed to get decision data:', response);
                 setError('Failed to fetch current decision. Please try again.');
             }
             setSelectedChoice(null);
         } catch (err) {
-            setError('Failed to fetch current decision. Please try again.');
             console.error('Error fetching decision:', err);
+            setError('Failed to fetch current decision. Please try again.');
         } finally {
             setIsLoading(false);
         }

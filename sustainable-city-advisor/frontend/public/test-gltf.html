@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLTF Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        console.log('Starting GLTF test...');
+        
+        // Create scene
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Add lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(50, 50, 50);
+        scene.add(directionalLight);
+
+        // Add a test cube first
+        const testGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const testMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        const testCube = new THREE.Mesh(testGeometry, testMaterial);
+        testCube.position.set(2, 0, 0);
+        scene.add(testCube);
+        console.log('Added test cube');
+
+        // Camera position
+        camera.position.set(5, 5, 5);
+        camera.lookAt(0, 0, 0);
+
+        // Load GLTF model
+        const loader = new THREE.GLTFLoader();
+        loader.load(
+            '/models/buildings/city-hall.glb',
+            function (gltf) {
+                console.log('✅ GLTF loaded successfully!', gltf);
+                console.log('Scene children count:', gltf.scene.children.length);
+                
+                const model = gltf.scene;
+                
+                // Scale the model to make it visible
+                model.scale.set(5, 5, 5);
+                model.position.set(0, 0, 0);
+                
+                // Check bounds
+                const box = new THREE.Box3().setFromObject(model);
+                console.log('Model bounds:', box);
+                console.log('Model size:', box.getSize(new THREE.Vector3()));
+                
+                scene.add(model);
+                console.log('Added model to scene');
+                console.log('Total scene children:', scene.children.length);
+            },
+            function (progress) {
+                console.log('Loading progress:', progress);
+            },
+            function (error) {
+                console.error('❌ Error loading GLTF:', error);
+            }
+        );
+
+        // Render loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotate test cube
+            testCube.rotation.x += 0.01;
+            testCube.rotation.y += 0.01;
+            
+            renderer.render(scene, camera);
+        }
+
+        animate();
+        console.log('Animation loop started');
+    </script>
+</body>
+</html>

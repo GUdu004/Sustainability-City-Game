@@ -1,0 +1,83 @@
+// Basic 3D model of a solar panel array
+// This is a placeholder model created with Three.js Buffer Geometry
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create the base/ground for the solar panels
+const baseGeometry = new THREE.BoxGeometry(10, 0.2, 10);
+const baseMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x999999,
+  roughness: 0.8,
+  metalness: 0.1
+});
+const base = new THREE.Mesh(baseGeometry, baseMaterial);
+base.position.y = 0.1;
+scene.add(base);
+
+// Create solar panels
+const panelGeometry = new THREE.BoxGeometry(2, 0.1, 1);
+const panelMaterial = new THREE.MeshStandardMaterial({ 
+  color: 0x1e3a8a,
+  roughness: 0.2,
+  metalness: 0.8
+});
+
+// Create a 3x3 grid of solar panels
+for (let i = 0; i < 9; i++) {
+  const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+  
+  // Position in a grid layout
+  panel.position.set(
+    (i % 3 - 1) * 2.5,
+    0.5,
+    Math.floor(i / 3 - 1) * 2.5
+  );
+  
+  // Tilt panels toward the sun
+  panel.rotation.x = -Math.PI / 6;
+  
+  // Create a simple frame/stand for each panel
+  const standGeometry = new THREE.BoxGeometry(0.1, 0.5, 0.1);
+  const standMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x666666,
+    roughness: 0.5,
+    metalness: 0.5
+  });
+  
+  const stand = new THREE.Mesh(standGeometry, standMaterial);
+  stand.position.y = -0.25;
+  
+  // Create a group for the panel and stand
+  const panelGroup = new THREE.Group();
+  panelGroup.add(panel);
+  panelGroup.add(stand);
+  
+  // Position the panel group
+  panelGroup.position.set(
+    (i % 3 - 1) * 2.5,
+    0.5,
+    Math.floor(i / 3 - 1) * 2.5
+  );
+  
+  scene.add(panelGroup);
+}
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to solar_panels.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);

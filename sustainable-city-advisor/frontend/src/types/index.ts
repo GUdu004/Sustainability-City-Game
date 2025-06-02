@@ -14,6 +14,7 @@ export interface GameState {
   gameStatus: 'active' | 'ended';
   endingType?: 'victory' | 'failure';
   endingTitle?: string;
+  endingDescription?: string;
   sceneElements: SceneElement[];
 }
 
@@ -47,7 +48,7 @@ export interface StatImpact {
 // 3D Scene Types
 export interface SceneElement {
   id: string;
-  type: 'building' | 'vegetation' | 'infrastructure' | 'effect';
+  type: 'building' | 'vegetation' | 'infrastructure' | 'industrial' | 'residential' | 'commercial' | 'civic' | 'effect';
   modelPath: string;
   position: { x: number; y: number; z: number };
   scale?: { x: number; y: number; z: number };
@@ -88,11 +89,35 @@ export interface DecisionMakeResponse {
   sceneChanges: SceneChange[];
   gameStatus: 'active' | 'ended';
   nextDecisionAvailable: boolean;
+  achievementsUnlocked?: Achievement[];
   error?: string;
 }
 
 export interface AdvisorResponse {
   success: boolean;
   data: AdvisorMessage;
+  error?: string;
+}
+
+// Achievement System Types
+export interface Achievement {
+    id: string;
+    title: string;
+    description: string;
+    category: 'environmental' | 'economic' | 'social' | 'leadership';
+    difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
+    unlockedAt?: Date;
+    reward?: {
+        visualEffect?: string;
+        cityElement?: string;
+    };
+}
+
+export interface AchievementResponse {
+  success: boolean;
+  data: {
+    unlocked: Achievement[];
+    progress: Record<string, number>;
+  };
   error?: string;
 }

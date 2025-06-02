@@ -1,0 +1,92 @@
+// Helper function to create an energy glow effect
+// This is a placeholder model created with Three.js Buffer Geometry
+
+import * as THREE from 'three';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter';
+
+// Create a scene
+const scene = new THREE.Scene();
+
+// Create energy particles
+const particleCount = 100;
+const particleGeometry = new THREE.BufferGeometry();
+const positions = new Float32Array(particleCount * 3);
+const colors = new Float32Array(particleCount * 3);
+
+// Create random positions and colors for particles
+for (let i = 0; i < particleCount; i++) {
+  const i3 = i * 3;
+  
+  // Random position in a sphere
+  const radius = 0.3 + Math.random() * 0.7; // Vary the distance from center
+  const theta = Math.random() * Math.PI * 2; // Random angle around y-axis
+  const phi = Math.random() * Math.PI; // Random angle from y-axis
+  
+  positions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+  positions[i3 + 1] = radius * Math.cos(phi);
+  positions[i3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+  
+  // Cyan/blue colors with slight variation
+  colors[i3] = 0.2 + Math.random() * 0.2; // R
+  colors[i3 + 1] = 0.7 + Math.random() * 0.3; // G
+  colors[i3 + 2] = 1.0; // B
+}
+
+particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+// Material with vertex colors
+const particleMaterial = new THREE.PointsMaterial({
+  size: 0.1,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.8,
+  blending: THREE.AdditiveBlending
+});
+
+// Create the particle system
+const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+scene.add(particleSystem);
+
+// Add a central glow
+const glowGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+const glowMaterial = new THREE.MeshBasicMaterial({
+  color: 0x00BFFF,
+  transparent: true,
+  opacity: 0.5
+});
+const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+scene.add(glow);
+
+// Add pulsing rings
+for (let i = 0; i < 3; i++) {
+  const ringGeometry = new THREE.TorusGeometry(0.3 + i * 0.15, 0.02, 8, 24);
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00FFFF,
+    transparent: true,
+    opacity: 0.4 - (i * 0.1)
+  });
+  const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+  
+  // Random rotation for each ring
+  ring.rotation.x = Math.random() * Math.PI;
+  ring.rotation.y = Math.random() * Math.PI;
+  
+  scene.add(ring);
+}
+
+// Export the model
+const exporter = new GLTFExporter();
+exporter.parse(
+  scene,
+  function (gltf) {
+    const output = JSON.stringify(gltf, null, 2);
+    console.log(output);
+    // This would normally save to a file, but we'll use the output in our model file
+    // In a real environment, you would save this to energy_glow.glb
+  },
+  function (error) {
+    console.log('An error happened during export:', error);
+  },
+  {}
+);
