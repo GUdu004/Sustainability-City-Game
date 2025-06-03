@@ -1,6 +1,6 @@
 // Simple integration test script to verify all API endpoints are working
 
-const BASE_URL = 'http://localhost:8000/api';
+const BASE_URL = 'http://localhost:5000/api';
 
 async function testAPI() {
     console.log('🧪 Testing Sustainable City Advisor API Integration...\n');

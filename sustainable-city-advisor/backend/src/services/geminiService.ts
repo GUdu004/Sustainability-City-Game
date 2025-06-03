@@ -2,6 +2,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GameState, Decision } from '../types';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+// Log the GEMINI_API_KEY for verification
+console.log('GEMINI_API_KEY:', GEMINI_API_KEY);
+
 // Only initialize the API client if we have a valid key
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 const model = genAI ? genAI.getGenerativeModel({ model: "gemini-pro" }) : null;

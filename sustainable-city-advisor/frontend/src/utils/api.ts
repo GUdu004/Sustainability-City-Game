@@ -132,6 +132,7 @@ export const sendPlayerDecision = async (
   choiceId: string
 ): Promise<DecisionMakeResponse> => {
   try {
+    console.log('Sending decision to backend:', { decisionId, choiceId });
     return await apiClient.post<DecisionMakeResponse>('/game/decision', {
       decisionId,
       choiceId

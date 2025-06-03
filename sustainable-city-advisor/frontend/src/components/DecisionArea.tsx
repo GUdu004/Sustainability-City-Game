@@ -54,7 +54,11 @@ const DecisionArea: React.FC<DecisionAreaProps> = ({ onDecisionMade, gameState }
         
         try {
             await sendPlayerDecision(decision.id, choice.id);
-            onDecisionMade(choice);
+            onDecisionMade(choice); // Pass the selected choice to update city stats
+            onDecisionMade({
+                ...choice,
+                impact: choice.impact // Include the impact data
+            });
             
             // Small delay for better UX
             setTimeout(() => {

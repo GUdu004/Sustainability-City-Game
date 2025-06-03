@@ -131,13 +131,18 @@ class GameService {
         nextDecisionAvailable: boolean;
         achievementsUnlocked: Achievement[];
     } {
+        console.log('makeDecision called with:', { decisionId, choiceId });
+        console.log('Available decisions:', this.decisions.map(d => ({ id: d.id, choices: d.choices.map(c => c.id) })));
+        
         const decision = this.decisions.find((d: Decision) => d.id === decisionId);
         if (!decision) {
+            console.error(`Decision with id ${decisionId} not found. Available decisions:`, this.decisions.map(d => d.id));
             throw new Error('Decision not found');
         }
 
         const choice = decision.choices.find((c: Choice) => c.id === choiceId);
         if (!choice) {
+            console.error(`Choice with id ${choiceId} not found in decision ${decisionId}. Available choices:`, decision.choices.map(c => c.id));
             throw new Error('Choice not found');
         }
 

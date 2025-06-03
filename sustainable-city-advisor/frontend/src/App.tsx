@@ -6,6 +6,7 @@ import EndGameScreen from './components/EndGameScreen';
 import StatsDisplay from './components/StatsDisplay';
 import AchievementPanel from './components/AchievementPanel';
 import AchievementNotification from './components/AchievementNotification';
+import Tutorial from './components/Tutorial';
 import { 
   fetchGameState, 
   fetchCurrentDecision, 
@@ -26,6 +27,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showAchievements, setShowAchievements] = useState(false);
   const [recentAchievements, setRecentAchievements] = useState<Achievement[]>([]);
+  const [showTutorial, setShowTutorial] = useState(true);
 
   // Load initial game state
   useEffect(() => {
@@ -287,7 +289,7 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Sustainable City Advisor</h1>
+        <h1>SUSTANABUILD GAME CITY</h1>
         <div className="header-controls">
           <div className="turn-info">
             Turn {gameState?.turn || 1} of {gameState?.maxTurns || 52}
@@ -361,6 +363,9 @@ const App: React.FC = () => {
           onClose={handleAchievementClose}
         />
       )}
+
+      {/* Tutorial */}
+      {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
     </div>
   );
 };
