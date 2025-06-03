@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { GameStats } from '../types';
 
 interface StatsDisplayProps {
@@ -6,6 +6,10 @@ interface StatsDisplayProps {
 }
 
 const StatsDisplay: React.FC<StatsDisplayProps> = ({ stats }) => {
+  useEffect(() => {
+    console.log('StatsDisplay updated with stats:', stats);
+  }, [stats]);
+
   if (!stats) {
     return (
       <div className="stats-display loading">
