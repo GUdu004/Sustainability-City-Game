@@ -8,7 +8,7 @@ import {
 
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://your-app.run.app/api' 
-  : '/api';
+  : 'http://localhost:8000/api';
 
 interface ApiError {
   status: number;
@@ -169,6 +169,11 @@ export const fetchAdvisorMessage = async (decisionId?: string, retries = 2): Pro
     try {
       const response = await apiClient.get<AdvisorResponse>(endpoint);
       console.log('API: Advisor message response:', response);
+
+      if (!response || !response.data) {
+        throw new Error('Invalid or empty response from the advisor API');
+      }
+
       return response;
     } catch (error) {
       console.warn(`Advisor API attempt ${i + 1}/${retries} failed:`, error);

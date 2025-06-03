@@ -11,7 +11,7 @@ Phase 1 of the Sustainable City Advisor game has been successfully completed. Al
 
 ### 1. Project Setup ✅
 - **Frontend**: React + Vite + TypeScript fully configured and running on port 3000
-- **Backend**: Node.js + Express + TypeScript fully configured and running on port 5000
+- **Backend**: Node.js + Express + TypeScript fully configured and running on port 8000
 - **Build System**: Both frontend and backend compile successfully with zero TypeScript errors
 - **CORS Configuration**: Properly configured for frontend-backend communication
 - **Development Environment**: Hot-reload enabled for both frontend and backend

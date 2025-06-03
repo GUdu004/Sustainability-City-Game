@@ -4,7 +4,7 @@
 This document outlines comprehensive testing for the Phase 4 achievements and polish features of the Sustainable City Game.
 
 ## Pre-Test Checklist ✅
-- [x] Backend server running on port 5000
+- [x] Backend server running on port 8000
 - [x] Frontend server running on port 3002
 - [x] TypeScript compilation successful
 - [x] Achievement system integrated

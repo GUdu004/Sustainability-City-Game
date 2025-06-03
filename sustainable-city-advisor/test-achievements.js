@@ -1,7 +1,7 @@
 // Achievement System API Test Script
 // Tests all achievement endpoints and validates responses
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'http://localhost:8000/api';
 
 class AchievementTester {
     constructor() {

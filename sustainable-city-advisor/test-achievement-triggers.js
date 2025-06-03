@@ -1,7 +1,7 @@
 // Advanced Achievement Trigger Test
 // This test plays multiple game rounds to trigger actual achievements
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = 'http://localhost:8000/api';
 
 class AchievementTriggerTest {
     constructor() {

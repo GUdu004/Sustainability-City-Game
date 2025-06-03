@@ -143,7 +143,7 @@ Your mission is to govern a thriving city by maintaining balance across three cr
 ## 🆘 Troubleshooting
 
 ### Common Issues
-- **City not loading**: Refresh the browser and ensure both frontend (port 3000) and backend (port 5000) are running
+- **City not loading**: Refresh the browser and ensure both frontend (port 3000) and backend (port 8000) are running
 - **3D models not appearing**: Check browser console for loading errors
 - **Decisions not updating**: Verify backend API connection
 - **Performance issues**: Close other browser tabs and ensure adequate system resources

@@ -111,7 +111,7 @@ Success Rate: 100.0%
 ## 🚀 Deployment Status
 
 ### Development Environment
-- **Backend Server**: ✅ Running (http://localhost:5000)
+- **Backend Server**: ✅ Running (http://localhost:8000)
 - **Frontend Application**: ✅ Running (http://localhost:3002)
 - **API Endpoints**: ✅ All functional
 - **Database**: ✅ In-memory storage working

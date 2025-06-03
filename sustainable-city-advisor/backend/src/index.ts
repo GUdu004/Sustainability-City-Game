@@ -6,12 +6,12 @@ import gameRoutes from './routes/gameRoutes';
 import advisorRoutes from './routes/advisorRoutes';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = 8000;
 
 // CORS configuration
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:5173'], // Allow frontend dev servers
-    credentials: true
+    origin: 'http://localhost:3000', // Allow requests from the frontend
+    credentials: true // Allow cookies and other credentials
 }));
 
 app.use(bodyParser.json());

@@ -9,7 +9,7 @@ const body_parser_1 = __importDefault(require("body-parser"));
 const gameRoutes_1 = __importDefault(require("./routes/gameRoutes"));
 const advisorRoutes_1 = __importDefault(require("./routes/advisorRoutes"));
 const app = (0, express_1.default)();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8000;
 // CORS configuration
 app.use((0, cors_1.default)({
     origin: ['http://localhost:3000', 'http://localhost:5173'],
