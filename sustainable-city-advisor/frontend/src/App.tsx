@@ -11,6 +11,7 @@ import {
   fetchCurrentDecision, 
   fetchAdvisorMessage,
   sendPlayerDecision,
+  resetGame,
   mockGameState,
   mockDecision
 } from './utils/api';
@@ -197,30 +198,48 @@ const App: React.FC = () => {
   const handleRestartGame = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/game/reset', { method: 'POST' });
-      const data = await response.json();
+      console.log('Restarting game...');
       
-      if (data.success) {
-        setGameState(data.data);
-        setRecentAchievements([]);
-        setError(null);
+      // Use the resetGame function from the API
+      try {
+        const resetResponse = await resetGame();
         
-        // Fetch new decision and advisor message
-        const [decisionResponse, advisorResponse] = await Promise.all([
-          fetchCurrentDecision(),
-          fetchAdvisorMessage()
-        ]);
+        if (resetResponse.success) {
+          console.log('Game reset successful, new state:', resetResponse.data);
+          setGameState(resetResponse.data);
+          setRecentAchievements([]);
+          setError(null);
+          
+          // Fetch new decision and advisor message
+          const [decisionResponse, advisorResponse] = await Promise.all([
+            fetchCurrentDecision(),
+            fetchAdvisorMessage()
+          ]);
 
-        if (decisionResponse.success) {
-          setCurrentDecision(decisionResponse.data);
+          if (decisionResponse.success) {
+            setCurrentDecision(decisionResponse.data);
+          }
+          if (advisorResponse.success) {
+            setAdvisorMessage(advisorResponse.data);
+          }
         }
-        if (advisorResponse.success) {
-          setAdvisorMessage(advisorResponse.data);
+      } catch (apiError) {
+        console.error('API error when resetting game:', apiError);
+        
+        // Fallback to using mock data in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Using mock data for restart');
+          setGameState(mockGameState.data);
+          setCurrentDecision(mockDecision.data);
+          setRecentAchievements([]);
+          setError(null);
+        } else {
+          throw apiError; // Re-throw in production
         }
       }
     } catch (err) {
       console.error('Error restarting game:', err);
-      // Fallback to window reload
+      // Fallback to window reload as last resort
       window.location.reload();
     } finally {
       setIsLoading(false);

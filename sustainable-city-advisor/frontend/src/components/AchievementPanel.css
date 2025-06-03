@@ -1,0 +1,433 @@
+/* AchievementPanel Styles */
+.achievement-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.achievement-panel {
+  background: linear-gradient(145deg, #ffffff, #f0f7ff);
+  border-radius: 24px;
+  width: 90%;
+  max-width: 850px;
+  max-height: 80vh;
+  padding: 0;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.achievement-header {
+  background: linear-gradient(135deg, #4a6bbd, #8253bd);
+  padding: 1.5rem 2rem;
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.achievement-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+}
+
+.achievement-header h2 {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.close-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.close-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+.achievement-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  color: #6c7a89;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(74, 107, 189, 0.2);
+  border-top-color: #4a6bbd;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.achievement-error {
+  background-color: rgba(231, 76, 60, 0.1);
+  border-left: 4px solid #e74c3c;
+  padding: 2rem;
+  text-align: center;
+  color: #e74c3c;
+  margin: 2rem;
+  border-radius: 12px;
+}
+
+.achievement-error button {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: 20px;
+  margin-top: 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.achievement-error button:hover {
+  background-color: #c0392b;
+  transform: translateY(-2px);
+}
+
+.achievement-content {
+  padding: 0;
+  overflow-y: auto;
+  max-height: calc(80vh - 80px);
+}
+
+.achievement-summary {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.9));
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-around;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.summary-stat {
+  text-align: center;
+  padding: 0.5rem 1.5rem;
+  flex: 1;
+}
+
+.summary-stat:not(:last-child) {
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.summary-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 0.3rem;
+  background: linear-gradient(135deg, #4a6bbd, #8253bd);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.summary-label {
+  display: block;
+  font-size: 0.9rem;
+  color: #6c7a89;
+  font-weight: 500;
+}
+
+.achievement-tabs {
+  display: flex;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 0 2rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.tab {
+  padding: 1rem 1.5rem;
+  font-weight: 600;
+  color: #8894a0;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.tab.active {
+  color: #4a6bbd;
+}
+
+.tab.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #4a6bbd, #8253bd);
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+}
+
+.achievement-list {
+  padding: 1.5rem 2rem 2rem;
+}
+
+.achievement-section {
+  margin-bottom: 2rem;
+}
+
+.achievement-section h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 1.2rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.achievement-item {
+  background: white;
+  border-radius: 16px;
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.achievement-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, #4a6bbd, #8253bd);
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+.achievement-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.achievement-item:hover::before {
+  opacity: 1;
+}
+
+.achievement-item.unlocked {
+  background: linear-gradient(135deg, #ffffff, #f6fffa);
+  border: 1px solid rgba(46, 204, 113, 0.3);
+}
+
+.achievement-item.unlocked::before {
+  background: linear-gradient(to bottom, #27ae60, #2ecc71);
+  opacity: 1;
+}
+
+.achievement-item.in-progress {
+  background: linear-gradient(135deg, #ffffff, #f5f9ff);
+  border: 1px solid rgba(52, 152, 219, 0.3);
+}
+
+.achievement-item.in-progress::before {
+  background: linear-gradient(to bottom, #3498db, #2980b9);
+  opacity: 1;
+}
+
+.achievement-icon {
+  width: 60px;
+  height: 60px;
+  font-size: 1.8rem;
+  background: linear-gradient(135deg, #4a6bbd, #8253bd);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 4px 15px rgba(74, 107, 189, 0.3);
+}
+
+.achievement-item.unlocked .achievement-icon {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+}
+
+.achievement-item.in-progress .achievement-icon {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+}
+
+.achievement-details {
+  flex: 1;
+}
+
+.achievement-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+}
+
+.achievement-description {
+  font-size: 0.95rem;
+  color: #7f8c8d;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.achievement-meta {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  font-size: 0.8rem;
+}
+
+.achievement-difficulty {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.achievement-unlock-time {
+  color: #95a5a6;
+}
+
+.achievement-status {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.achievement-status.unlocked {
+  color: #27ae60;
+  font-size: 1.5rem;
+}
+
+.achievement-status.in-progress {
+  color: #3498db;
+}
+
+.achievement-progress-bar {
+  height: 8px;
+  background-color: rgba(52, 152, 219, 0.1);
+  border-radius: 4px;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3498db, #2980b9);
+  border-radius: 4px;
+}
+
+.achievement-progress-text {
+  font-size: 0.8rem;
+  color: #7f8c8d;
+}
+
+/* Responsive styles */
+@media screen and (max-width: 768px) {
+  .achievement-panel {
+    width: 95%;
+    max-height: 85vh;
+  }
+  
+  .achievement-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .achievement-summary {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .summary-stat {
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    padding-bottom: 1rem;
+  }
+  
+  .summary-stat:last-child {
+    border-bottom: none;
+  }
+  
+  .achievement-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .achievement-icon {
+    margin-bottom: 0.8rem;
+  }
+  
+  .achievement-status {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+  }
+}
