@@ -6,6 +6,7 @@ import { Sky } from 'three/examples/jsm/objects/Sky';
 import { Water } from 'three/examples/jsm/objects/Water';
 import { LowPolyModelGenerator } from '../utils/lowPolyModels';
 import { TerrainGenerator } from '../utils/terrainGenerator';
+import { FlatTerrainProvider } from '../utils/flatTerrainProvider';
 import { Achievement } from '../types';
 
 interface SceneElement {
@@ -272,12 +273,20 @@ export default function CityView({
   useEffect(() => {
     // Create scene
     const scene = new THREE.Scene();
+    scene.fog = null; // Disable fog to prevent reflective effects
+    
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      alpha: true
+    });
     
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = false; // Disable shadow mapping to prevent reflective effects
+    renderer.outputEncoding = THREE.LinearEncoding; // Use linear encoding for more consistent, less reflective materials
+    renderer.physicallyCorrectLights = false; // Disable physically correct lighting which can cause reflections
+    renderer.toneMapping = THREE.NoToneMapping; // Disable tone mapping which can affect material appearance
     mountRef.current?.appendChild(renderer.domElement);
     
     // Store refs
@@ -289,34 +298,31 @@ export default function CityView({
     camera.position.set(40, 30, 40);
     camera.lookAt(0, 0, 0);
     
-    // Add lighting with better quality
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    // Add lighting with better quality - reduced lighting intensity to minimize reflections
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Reduced ambient light
     scene.add(ambientLight);
     
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5); // Reduced directional light intensity
     directionalLight.position.set(100, 100, 50);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 4096;
-    directionalLight.shadow.mapSize.height = 4096;
-    directionalLight.shadow.camera.near = 0.5;
-    directionalLight.shadow.camera.far = 500;
-    directionalLight.shadow.camera.left = -200;
-    directionalLight.shadow.camera.right = 200;
-    directionalLight.shadow.camera.top = 200;
-    directionalLight.shadow.camera.bottom = -200;
-    directionalLight.shadow.bias = -0.0001;
-    scene.add(directionalLight);
+    directionalLight.castShadow = false; // Disable shadows entirely
     directionalLightRef.current = directionalLight;
+    scene.add(directionalLight);
     
-    // Add ground with low-poly terrain
-    const terrain = TerrainGenerator.createLowPolyTerrain(400, 48);
-    const terrainMaterial = terrain.material as THREE.MeshLambertMaterial;
-    terrainMaterial.color = new THREE.Color().setHSL(
-      0.25, // Green hue
-      0.6, // Saturation
-      0.3 + (environmentScore / 200) // Lightness based on environment score
-    );
+    // Use the new flat terrain provider that has no reflections
+    // Create a hybrid approach with two ground planes for better visual quality
+    // First add the shader-based completely non-reflective ground
+    const terrain = FlatTerrainProvider.createFlatTerrain(400);
+    
+    // Add a canvas-based textured ground on top for better visual appearance
+    // This adds a subtle texture while maintaining the complete non-reflective nature
+    const groundPlane = FlatTerrainProvider.createGroundPlane(400);
+    groundPlane.position.y = 0.01; // Position slightly above the base terrain to avoid z-fighting
+    
+    // Update the terrain color based on environment score
+    FlatTerrainProvider.updateTerrainColor(terrain, environmentScore);
+    
     scene.add(terrain);
+    scene.add(groundPlane);
     groundRef.current = terrain;
     
     // Add natural environment elements
@@ -387,7 +393,7 @@ export default function CityView({
     sun.setFromSphericalCoords(1, phi, theta);
     uniforms['sunPosition'].value.copy(sun);
     
-    // Add simple water
+    // Add simple water positioned well below terrain to avoid reflections
     const waterGeometry = new THREE.PlaneGeometry(1000, 1000);
     const water = new Water(
       waterGeometry,
@@ -403,12 +409,13 @@ export default function CityView({
         sunDirection: new THREE.Vector3(0, 1, 0),
         sunColor: 0xffffff,
         waterColor: 0x001e0f,
-        distortionScale: 3.7,
-        fog: false
+        distortionScale: 1.0, // Reduced distortion to minimize reflective appearance
+        fog: false,
+        alpha: 0.9 // Make water more opaque to hide reflections
       }
     );
     water.rotation.x = -Math.PI / 2;
-    water.position.y = -5; // Below ground level
+    water.position.y = -50; // Positioned extremely low to completely avoid any reflections on ground
     scene.add(water);
     waterRef.current = water;
     
@@ -707,6 +714,14 @@ export default function CityView({
       addAchievementVisualEffects(recentAchievements);
     }
   }, [recentAchievements]);
+  
+  // Update terrain color when environment score changes
+  useEffect(() => {
+    if (groundRef.current && groundRef.current.material) {
+      console.log('Updating terrain color based on environment score:', environmentScore);
+      FlatTerrainProvider.updateTerrainColor(groundRef.current, environmentScore);
+    }
+  }, [environmentScore]);
   
   return <div ref={mountRef} style={{ width: '100%', height: '100%' }} />;
 };

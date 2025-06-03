@@ -34,22 +34,24 @@ export class TerrainGenerator {
       }
       
       positions[i + 1] = height; // Y coordinate
-    }
-    
-    // Update the geometry
+    }      // Update the geometry
     positionAttribute.needsUpdate = true;
-    geometry.computeVertexNormals();
-    
-    // Create material with vertex colors based on height
-    const material = new THREE.MeshLambertMaterial({ 
+    geometry.computeVertexNormals();    // Create a completely flat-colored material with no lighting or reflections
+    // Using MeshBasicMaterial for a material that completely ignores lighting
+    const material = new THREE.MeshBasicMaterial({ 
       color: 0x4a5d23, // Dark green
       vertexColors: false,
-      wireframe: false
+      wireframe: false,
+      fog: false, // Disable fog effect on terrain
+      depthWrite: true, // Ensures proper depth sorting
+      transparent: false
     });
     
+    // Create the terrain mesh
     const terrain = new THREE.Mesh(geometry, material);
     terrain.rotation.x = -Math.PI / 2;
-    terrain.receiveShadow = true;
+    terrain.receiveShadow = false; // Disable shadow receiving which can cause lighting artifacts
+    terrain.castShadow = false; // Disable shadow casting
     
     return terrain;
   }
